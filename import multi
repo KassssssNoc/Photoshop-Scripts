@@ -1,0 +1,179 @@
+function main() {
+	// user settings
+	var prefs = new Object();
+	prefs.sourceFolder         = '~';  // default browse location (default: '~')
+	prefs.removeFileExtensions = true; // remove filename extensions for imported layers (default: true)
+	prefs.savePrompt           = false; // display save prompt after import is complete (default: false)
+	prefs.closeAfterSave       = false; // close import document after saving (default: false)
+
+	if (!documents.length){
+		alert("No open document to import into!");
+		return;
+	}
+	// prompt for source folder
+	var sourceFolder = Folder.selectDialog('Please select the folder to be imported:', Folder(prefs.sourceFolder));
+
+	// ensure the source folder is valid
+	if (!sourceFolder) {
+		return;
+	}
+	else if (!sourceFolder.exists) {
+		alert('Source folder not found.', 'Script Stopped', true);
+		return;
+	}
+
+	// add source folder to user settings
+	prefs.sourceFolder = sourceFolder;
+
+	var got_files = false;
+	// get a list of folders
+	var folderArray = getFolders(prefs.sourceFolder);
+	
+	var len = folderArray.length;
+	// loop through folders
+	app.togglePalettes();
+	for (var i = 0; i < len; i++) {
+		// get a list of files
+		var fileArray = getFiles(folderArray[i]);
+		// if files were found, proceed with import
+		if (fileArray.length) {
+			var layer = importFolder(folderArray[i]);
+			importFilesInLayer(fileArray, layer, prefs);
+			got_files = true;
+		}
+	}
+	app.togglePalettes();
+	
+	// if no files found , diplay message
+	if (!got_files) {
+		alert("The selected folder doesn't contain any recognized images.", 'No Files Found', false);
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// getFiles - get all files within the specified source
+///////////////////////////////////////////////////////////////////////////////
+function getFiles(sourceFolder) {
+	// declare local variables
+	var fileArray = new Array();
+	var extRE = /\.(?:png|gif|jpg|bmp|tif|psd)$/i;
+
+	// get all files in source folder
+	var docs = sourceFolder.getFiles();
+	var len = docs.length;
+	for (var i = 0; i < len; i++) {
+		var doc = docs[i];
+
+		// only match files (not folders)
+		if (doc instanceof File) {
+			// store all recognized files into an array
+			var docName = doc.name;
+			if (docName.match(extRE)) {
+				fileArray.push(doc);
+			}
+		}
+	}
+
+	// return file array
+	return fileArray;
+}
+
+function getFolders(sourceFolder) {
+	// declare local variables
+	var folderArray = new Array();
+
+	// get all items in source folder
+	var items = sourceFolder.getFiles();
+	var len = items.length;
+	for (var i = 0; i < len; i++) {
+		var item = items[i];
+
+		// only match files (not folders)
+		if (item instanceof Folder) {
+			// store all recognized files into an array
+			folderArray.push(item);
+		}
+	}
+
+	// return folder array
+	return folderArray;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// importFolderAsLayers - imports a folder of images as named layers
+///////////////////////////////////////////////////////////////////////////////
+
+function importFolder(folderName){
+	// get folder name
+	var path = folderName.toString();
+	var lastIndex = path.lastIndexOf("/");
+	var folder = path.slice(lastIndex + 1);
+	var newLayer = app.activeDocument.layerSets.add();
+	newLayer.name = folder
+	return newLayer
+}
+
+function importFilesInLayer(fileArray, layer, prefs) {
+	// loop through all files in the source folder
+	for (var i = fileArray.length -1; i >= 0; i--) {
+		// open document
+        var curr_file = app.open(fileArray[i]);
+		// get file name
+		var name = curr_file.name;
+		name = name.replace(/(?:\.[^.]*$|$)/, '');
+		// copy file and paste into current file
+        curr_file.selection.selectAll();
+        curr_file.selection.copy();
+        curr_file.close(SaveOptions.DONOTSAVECHANGES);
+        curr_layer = app.activeDocument.paste();
+		// rename
+		curr_layer.name = name
+	}
+	// reveal and trim to fit all layers
+	app.activeDocument.revealAll();
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+// isCorrectVersion - check for Adobe Photoshop CS2 (v9) or higher
+///////////////////////////////////////////////////////////////////////////////
+function isCorrectVersion() {
+	if (parseInt(version, 10) >= 9) {
+		return true;
+	}
+	else {
+		alert('This script requires Adobe Photoshop CS2 or higher.', 'Wrong Version', false);
+		return false;
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// showError - display error message if something goes wrong
+///////////////////////////////////////////////////////////////////////////////
+function showError(err) {
+	if (confirm('An unknown error has occurred.\n' +
+		'Would you like to see more information?', true, 'Unknown Error')) {
+			alert(err + ': on line ' + err.line, 'Script Error', true);
+	}
+}
+
+
+// test initial conditions prior to running main function
+if (isCorrectVersion()) {
+	// remember ruler units; switch to pixels
+	var originalRulerUnits = preferences.rulerUnits;
+	preferences.rulerUnits = Units.PIXELS;
+
+	try {
+		main();
+	}
+	catch(e) {
+		// don't report error on user cancel
+		if (e.number != 8007) {
+			showError(e);
+		}
+	}
+
+	// restore original ruler unit
+	preferences.rulerUnits = originalRulerUnits;
+}
